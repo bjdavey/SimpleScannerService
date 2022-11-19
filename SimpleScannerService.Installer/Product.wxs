@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?define publish="$(var.SimpleScannerService.ProjectDir)\Publish"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Simple Scanner Service" Language="1033" Version="1.0.0.0" Manufacturer="BJ" UpgradeCode="0b6a79de-0292-4fb6-af0a-b25659c26c40">
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Feature Id="ProductFeature" Title="Simple.Scanner.Service" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="!(bind.property.ProductName)" />
+      </Directory>
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+
+      <Component Id="Files" Guid="A74EDE5E-D690-45B1-82AD-C8A86C5CA104">
+        <File Source="$(var.publish)\appsettings.json"/>
+        <File Source="$(var.publish)\aspnetcorev2_inprocess.dll"/>
+        <File Id="SimpleScannerService.pdb" Source="$(var.publish)\SimpleScannerService.pdb"/>
+        <File Id="web.config" Source="$(var.publish)\web.config"/>
+      </Component>
+
+      <Component Id="ProductComponent">
+
+        <File
+				  Id="SimpleScannerService.exe"
+				  Name="SimpleScannerService.exe"
+				  DiskId="1"
+				  Source="$(var.publish)\SimpleScannerService.exe"
+				  Vital="yes"
+				  KeyPath="yes" />
+
+        <ServiceInstall Id="ServiceInstaller" Type="ownProcess" Vital="yes"
+								Name="Simple.Scanner.Service" DisplayName="Simple Scanner Service"
+								Description="Simple Scanner Service - by BJ Davey" Start="auto"
+								Account="LocalSystem" ErrorControl="normal"
+					Arguments=" /start Simple.Scanner.Service"
+					Interactive="no" />
+
+        <ServiceControl Id="StartService"  Stop="both" Start="install" Remove="uninstall"
+								Name="Simple.Scanner.Service" Wait="yes" />
+      </Component>
+   
+    </ComponentGroup>
+
+  </Fragment>
+</Wix>
