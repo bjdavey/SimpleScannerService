@@ -18,8 +18,12 @@ namespace SimpleScannerService.Controllers
     {
         private readonly ILogger<ServiceController> _logger;
 
+        private TwainSession twainSession;
         public ServiceController(ILogger<ServiceController> logger)
         {
+            var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
+            twainSession = new TwainSession(appId);
+
             _logger = logger;
         }
 
@@ -45,13 +49,85 @@ namespace SimpleScannerService.Controllers
         {
             try
             {
-                var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
-                var session = new TwainSession(appId);
-                session.Open();
+                twainSession.Open();
+                var list = twainSession.GetSources().ToList().Select(source => source.Name).ToArray();
+                twainSession.Close();
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status406NotAcceptable, new
+                {
+                    Code = Errors.General,
+                    Message = ex.Message + " - " + ex.InnerException?.Message
+                });
+            }
+        }
+
+        [HttpGet]
+        public ActionResult GetScannerDetails([FromQuery] string ScannerName)
+        {
+            try
+            {
+                twainSession.Open();
+
+                var scanner = twainSession.GetSources().FirstOrDefault(x => x.Name == ScannerName);
+
+                if (scanner == null)
+                {
+                    return StatusCode(StatusCodes.Status406NotAcceptable, new
+                    {
+                        Code = Errors.ScannerNotAvailable,
+                        Message = $"'{ScannerName}' scanner is not available"
+                    });
+                }
+
+                scanner.Open();
+
+                if (!scanner.IsOpen)
+                {
+                    return StatusCode(StatusCodes.Status406NotAcceptable, new
+                    {
+                        Code = Errors.CouldNotOpenScanner,
+                        Message = $"Could not open the scanner: '{scanner.Name}'"
+                    });
+                }
+
+                var result = new
+                {
+                    Name = scanner.Name,
+                    SupportDuplex = scanner.Capabilities.CapDuplexEnabled.IsSupported,
+                    SupportedColors = scanner.Capabilities.ICapPixelType?.GetValues()?.Select(x => x.ToString()),
+                    SupportedPaperSizes = scanner.Capabilities.ICapSupportedSizes?.GetValues()?.Select(x => x.ToString()),
+                    SupportedResolutions = scanner.Capabilities.ICapXResolution?.GetValues()?.Where(dpi => (dpi % 50) == 0).Select(x => x.Whole)
+                };
+
+                scanner.Close();
+                twainSession.Close();
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status406NotAcceptable, new
+                {
+                    Code = Errors.General,
+                    Message = ex.Message + " - " + ex.InnerException?.Message
+                });
+            }
+        }
+
+
+        [HttpGet]
+        public ActionResult GetAvailableScannersDetailed()
+        {
+            try
+            {
+                twainSession.Open();
 
                 var list = new List<dynamic>();
 
-                session.GetSources().ToList().ForEach(source =>
+                twainSession.GetSources().ToList().ForEach(source =>
                 {
                     source.Open();
                     if (source.IsOpen)
@@ -68,7 +144,7 @@ namespace SimpleScannerService.Controllers
                         source.Close();
                     }
                 });
-                session.Close();
+                twainSession.Close();
                 return Ok(list);
 
             }
@@ -95,13 +171,10 @@ namespace SimpleScannerService.Controllers
         {
             try
             {
-
-
-                var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
-                var session = new TwainSession(appId);
+                twainSession.Open();
 
                 List<Image> scannedImages = new List<Image>();
-                session.DataTransferred += (s, e) =>
+                twainSession.DataTransferred += (s, e) =>
                 {
                     if (e.NativeData != IntPtr.Zero)
                     {
@@ -114,7 +187,7 @@ namespace SimpleScannerService.Controllers
                 };
 
                 var TransferError = false;
-                session.TransferError += (s, e) =>
+                twainSession.TransferError += (s, e) =>
                 {
                     TransferError = true;
                 };
@@ -127,9 +200,9 @@ namespace SimpleScannerService.Controllers
                     });
                 }
 
-                session.Open();
+                twainSession.Open();
 
-                DataSource scanner = session.DefaultSource;
+                DataSource scanner = twainSession.DefaultSource;
                 if (scanner == null)
                 {
                     return StatusCode(StatusCodes.Status406NotAcceptable, new
@@ -141,7 +214,7 @@ namespace SimpleScannerService.Controllers
 
                 if (ScannerName != null)
                 {
-                    var value = session.GetSources().FirstOrDefault(x => x.Name == ScannerName);
+                    var value = twainSession.GetSources().FirstOrDefault(x => x.Name == ScannerName);
                     if (value != null)
                     {
                         scanner = value;
@@ -196,6 +269,7 @@ namespace SimpleScannerService.Controllers
                 //scanner.Enable(SourceEnableMode.ShowUI, false, IntPtr.Zero);
 
                 scanner.Close();
+                twainSession.Close();
 
                 switch (FileType)
                 {
