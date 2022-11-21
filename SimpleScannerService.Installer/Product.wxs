@@ -8,8 +8,8 @@
     <MediaTemplate EmbedCab="yes" />
 
     <Feature Id="ProductFeature" Title="Simple.Scanner.Service" Level="1">
-      <ComponentGroupRef Id="ProductComponents" />
       <ComponentGroupRef Id="Files" />
+      <ComponentGroupRef Id="ProductComponents" />
     </Feature>
   </Product>
 
@@ -25,27 +25,25 @@
     
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
 
-      <Component Id="ProductComponent">
-
-        <File
-				  Id="SimpleScannerService.exe"
-				  Name="SimpleScannerService.exe"
-				  DiskId="1"
-				  Source="$(var.publish)\SimpleScannerService.exe"
-				  Vital="yes"
-				  KeyPath="yes" />
-
-        <ServiceInstall Id="ServiceInstaller" Type="ownProcess" Vital="yes"
-								Name="Simple.Scanner.Service" DisplayName="Simple Scanner Service"
-								Description="Simple Scanner Service - by BJ Davey" Start="auto"
-								Account="LocalSystem" ErrorControl="normal" Interactive="yes"
-					      Arguments=" /start Simple.Scanner.Service" />
-
-        <ServiceControl Id="StartService"  Stop="both" Start="install" Remove="uninstall"
-								Name="Simple.Scanner.Service" Wait="yes" />
+      <!-- Auto-start via Registry -->
+      <Component Id="MerliniAssistanceAutostart">
+          <RegistryValue Id="MerAs.rst" Root="HKMU" Action="write"
+                   Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                   Name="Simple Scanner Service - by BJ Davey"
+                   Value="[INSTALLFOLDER]SimpleScannerService.exe"
+                   Type="string" />
       </Component>
-   
+
     </ComponentGroup>
+
+    <CustomAction Id="EXECUTE_AFTER_FINALIZE"                  
+              Directory="INSTALLFOLDER"
+              Return="asyncNoWait"
+              ExeCommand="[INSTALLFOLDER]SimpleScannerService.exe" />
+
+    <InstallExecuteSequence>
+        <Custom Action="EXECUTE_AFTER_FINALIZE" After="InstallFinalize">NOT Installed</Custom>
+    </InstallExecuteSequence>
 
   </Fragment>
 </Wix>
