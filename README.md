@@ -1,4 +1,4 @@
-Scanner APIs Service as a Windows Service
+Scanner APIs Service as a Windows Service/Windows EXE
 
 Note: works with Micrososft Windows only!
 
