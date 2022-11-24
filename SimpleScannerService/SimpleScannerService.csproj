@@ -18,6 +18,7 @@
   <ItemGroup>
     <PackageReference Include="iTextSharp.LGPLv2.Core" Version="1.9.3" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="7.0.0" />
+    <PackageReference Include="NLog.Web.AspNetCore" Version="5.1.5" />
     <PackageReference Include="NTwain" Version="3.7.2" />
     <PackageReference Include="System.Drawing.Common" Version="7.0.0" />
   </ItemGroup>

@@ -16,15 +16,12 @@ namespace SimpleScannerService.Controllers
     [Route("ScannerService/[action]")]
     public class ServiceController : ControllerBase
     {
-        private readonly ILogger<ServiceController> _logger;
 
         private TwainSession twainSession;
-        public ServiceController(ILogger<ServiceController> logger)
+        public ServiceController()
         {
             var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
             twainSession = new TwainSession(appId);
-
-            _logger = logger;
         }
 
         [HttpGet]
