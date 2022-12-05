@@ -20,6 +20,7 @@ namespace SimpleScannerService.Controllers
         private TwainSession twainSession;
         public ServiceController()
         {
+            NTwain.PlatformInfo.Current.PreferNewDSM = false;
             var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
             twainSession = new TwainSession(appId);
         }
