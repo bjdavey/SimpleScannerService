@@ -17,12 +17,9 @@ namespace SimpleScannerService.Controllers
     public class ServiceController : ControllerBase
     {
 
-        private TwainSession twainSession;
         public ServiceController()
         {
-            NTwain.PlatformInfo.Current.PreferNewDSM = false;
-            var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
-            twainSession = new TwainSession(appId);
+
         }
 
         [HttpGet]
@@ -47,6 +44,9 @@ namespace SimpleScannerService.Controllers
         {
             try
             {
+                NTwain.PlatformInfo.Current.PreferNewDSM = false;
+                var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
+                var twainSession = new TwainSession(appId);
                 twainSession.Open();
                 var list = twainSession.GetSources().ToList().Select(source => source.Name).ToArray();
                 twainSession.Close();
@@ -67,6 +67,10 @@ namespace SimpleScannerService.Controllers
         {
             try
             {
+                NTwain.PlatformInfo.Current.PreferNewDSM = false;
+                var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
+                var twainSession = new TwainSession(appId);
+
                 twainSession.Open();
 
                 var scanner = twainSession.GetSources().FirstOrDefault(x => x.Name == ScannerName);
@@ -121,6 +125,10 @@ namespace SimpleScannerService.Controllers
         {
             try
             {
+                NTwain.PlatformInfo.Current.PreferNewDSM = false;
+                var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
+                var twainSession = new TwainSession(appId);
+
                 twainSession.Open();
 
                 var list = new List<dynamic>();
@@ -169,6 +177,10 @@ namespace SimpleScannerService.Controllers
         {
             try
             {
+                NTwain.PlatformInfo.Current.PreferNewDSM = false;
+                var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
+                var twainSession = new TwainSession(appId);
+
                 twainSession.Open();
 
                 List<Image> scannedImages = new List<Image>();
@@ -180,6 +192,7 @@ namespace SimpleScannerService.Controllers
                         if (stream != null)
                         {
                             scannedImages.Add(Image.FromStream(stream));
+                            stream.Dispose();
                         }
                     }
                 };
@@ -197,8 +210,6 @@ namespace SimpleScannerService.Controllers
                         Message = $"Transfer Error"
                     });
                 }
-
-                twainSession.Open();
 
                 DataSource scanner = twainSession.DefaultSource;
                 if (scanner == null)
@@ -269,6 +280,15 @@ namespace SimpleScannerService.Controllers
                 scanner.Close();
                 twainSession.Close();
 
+                if (scannedImages == null || scannedImages.Count == 0)
+                {
+                    return StatusCode(StatusCodes.Status406NotAcceptable, new
+                    {
+                        Code = Errors.NoImagesScanned,
+                        Message = $"No images could be scanned"
+                    });
+                }
+
                 switch (FileType)
                 {
                     case null:
@@ -302,6 +322,7 @@ namespace SimpleScannerService.Controllers
             var stream = new System.IO.MemoryStream();
             image.Save(stream, ImageFormat.Jpeg);
             stream.Position = 0;
+            image.Dispose();
             return stream;
         }
 
@@ -318,7 +339,10 @@ namespace SimpleScannerService.Controllers
                         var entry = archive.CreateEntry(name);
                         using (var entryStream = entry.Open())
                         {
-                            ToStream(img).CopyTo(entryStream);
+                            using (var imgStream = ToStream(img))
+                            {
+                                imgStream.CopyTo(entryStream);
+                            }
                         }
                     }
                 }
@@ -341,7 +365,7 @@ namespace SimpleScannerService.Controllers
                     iTextSharp.text.Image img = iTextSharp.text.Image.GetInstance(image, ImageFormat.Jpeg);
                     img.Alignment = Element.ALIGN_CENTER;
                     img.ScaleToFit(doc.PageSize.Width - 10, doc.PageSize.Height - 10);
-                    doc.Add(img);
+                    image.Dispose();
                 });
                 doc.Close();
                 pdfBytes = ms.ToArray();
