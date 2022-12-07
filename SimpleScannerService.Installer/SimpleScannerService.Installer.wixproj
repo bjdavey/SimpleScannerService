@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
-    <ProductVersion>1.2</ProductVersion>
+    <ProductVersion>1.2.1</ProductVersion>
     <ProjectGuid>b5f6ed7c-0b65-4ec0-acf4-1aeca961bdd4</ProjectGuid>
     <SchemaVersion>2.0</SchemaVersion>
     <OutputName>SimpleScannerService.v$(ProductVersion)</OutputName>

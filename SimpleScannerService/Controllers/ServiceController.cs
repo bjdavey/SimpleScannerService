@@ -4,10 +4,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NTwain;
 using NTwain.Data;
+using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Image = System.Drawing.Image;
+using Rectangle = System.Drawing.Rectangle;
 
 namespace SimpleScannerService.Controllers
 {
@@ -186,15 +189,33 @@ namespace SimpleScannerService.Controllers
                 List<Image> scannedImages = new List<Image>();
                 twainSession.DataTransferred += (s, e) =>
                 {
-                    if (e.NativeData != IntPtr.Zero)
+                    switch (e.TransferType)
                     {
-                        var stream = e.GetNativeImageStream();
-                        if (stream != null)
-                        {
-                            scannedImages.Add(Image.FromStream(stream));
-                            stream.Dispose();
-                        }
+                        case XferMech.Native:
+                            if (e.NativeData != IntPtr.Zero)
+                            {
+                                var stream = e.GetNativeImageStream();
+                                if (stream != null)
+                                {
+                                    scannedImages.Add(Image.FromStream(stream));
+                                }
+                            }
+                            break;
+                        case XferMech.File:
+                            if (String.IsNullOrEmpty(e.FileDataPath))
+                            {
+                                var img = new Bitmap(e.FileDataPath);
+                                scannedImages.Add(img);
+                            }
+                            break;
+                        case XferMech.Memory:
+                            if (e.MemoryData != null && e.MemoryData.Length > 0)
+                            {
+                                scannedImages.Add(ToImage(e.MemoryData, e.ImageInfo));
+                            }
+                            break;
                     }
+
                 };
 
                 var TransferError = false;
@@ -202,14 +223,6 @@ namespace SimpleScannerService.Controllers
                 {
                     TransferError = true;
                 };
-                if (TransferError)
-                {
-                    return StatusCode(StatusCodes.Status417ExpectationFailed, new
-                    {
-                        Code = Errors.TransferError,
-                        Message = $"Transfer Error"
-                    });
-                }
 
                 DataSource scanner = twainSession.DefaultSource;
                 if (scanner == null)
@@ -247,6 +260,30 @@ namespace SimpleScannerService.Controllers
                     });
                 }
 
+                if (scanner.Capabilities.ACapXferMech.IsSupported)
+                {
+                    scanner.Capabilities.ACapXferMech.SetValue(XferMech.Native);
+                    //scanner.Capabilities.ACapXferMech.SetValue(XferMech.Memory);
+                }
+                if (scanner.Capabilities.ICapXferMech.IsSupported)
+                {
+                    scanner.Capabilities.ICapXferMech.SetValue(XferMech.Native);
+                    //scanner.Capabilities.ICapXferMech.SetValue(XferMech.Memory);
+                }
+                //if (scanner.Capabilities.CapClearPage.IsSupported)
+                //{
+                //    scanner.Capabilities.CapClearPage.SetValue(BoolType.True);
+                //}
+                //if (scanner.Capabilities.CapClearBuffers.IsSupported)
+                //{
+                //    scanner.Capabilities.CapClearBuffers.SetValue(ClearBuffer.Clear);
+                //}
+
+                if (scanner.Capabilities.ICapAutoDiscardBlankPages.IsSupported)
+                {
+                    scanner.Capabilities.ICapAutoDiscardBlankPages.SetValue(BlankPage.Auto);
+                }
+
                 if (scanner.Capabilities.CapDuplexEnabled.IsSupported)
                 {
                     if (DuplexEnabled == null) DuplexEnabled = true;
@@ -279,6 +316,15 @@ namespace SimpleScannerService.Controllers
 
                 scanner.Close();
                 twainSession.Close();
+
+                if (TransferError)
+                {
+                    return StatusCode(StatusCodes.Status417ExpectationFailed, new
+                    {
+                        Code = Errors.TransferError,
+                        Message = $"Transfer Error"
+                    });
+                }
 
                 if (scannedImages == null || scannedImages.Count == 0)
                 {
@@ -325,6 +371,43 @@ namespace SimpleScannerService.Controllers
             image.Dispose();
             return stream;
         }
+
+
+        private Image ToImage(byte[] bytes, TWImageInfo info)
+        {
+            byte[] newData = new byte[bytes.Length];
+
+            for (int x = 0; x < bytes.Length; x += 3)
+            {
+                byte[] pixel = new byte[3];
+                Array.Copy(bytes, x, pixel, 0, 3);
+
+                byte r = pixel[0];
+                byte g = pixel[1];
+                byte b = pixel[2];
+
+                byte[] newPixel = new byte[] { r, g, b };
+
+                Array.Copy(newPixel, 0, newData, x, 3);
+            }
+
+            bytes = newData;
+
+            var bmp = new Bitmap(info.ImageWidth, info.ImageLength, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0,
+                    bmp.Width,
+                    bmp.Height),
+                ImageLockMode.WriteOnly,
+                bmp.PixelFormat);
+
+            IntPtr pNative = bmpData.Scan0;
+            Marshal.Copy(bytes, 0, pNative, bytes.Length);
+
+            bmp.UnlockBits(bmpData);
+
+            return bmp;
+        }
+
 
         private byte[] CreateZipCollection(List<Image> images)
         {
