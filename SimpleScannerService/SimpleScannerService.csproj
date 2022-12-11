@@ -4,8 +4,11 @@
     <TargetFramework>net6.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <OutputType>WinExe</OutputType>
-    <UseWindowsForms>True</UseWindowsForms>
+    <!--<OutputType>WinExe</OutputType>
+    <UseWindowsForms>True</UseWindowsForms>-->
+    <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,8 +22,15 @@
     <PackageReference Include="iTextSharp.LGPLv2.Core" Version="1.9.3" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="7.0.0" />
     <PackageReference Include="NLog.Web.AspNetCore" Version="5.1.5" />
-    <PackageReference Include="NTwain" Version="3.7.2" />
+    <PackageReference Include="Saraff.Tiff" Version="1.0.1.401" />
+    <PackageReference Include="Saraff.Twain" Version="1.0.32.732" />
+    <PackageReference Include="Saraff.Twain.Aux" Version="1.0.4.744" />
     <PackageReference Include="System.Drawing.Common" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SimpleScannerService.AUX_MSIL\SimpleScannerService.AUX_MSIL.csproj" />
+    <ProjectReference Include="..\SimpleScannerService.AUX_x86\SimpleScannerService.AUX_x86.csproj" />
   </ItemGroup>
 
 </Project>

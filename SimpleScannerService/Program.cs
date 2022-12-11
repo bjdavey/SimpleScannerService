@@ -11,6 +11,11 @@ try
     builder.Logging.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Warning);
     builder.Host.UseNLog();
 
+    builder.Host.UseWindowsService(options =>
+    {
+        options.ServiceName = "Simple.Scanner.Service";
+    });
+
     builder.Services.AddControllers();
 
     var baseUrl = builder.Configuration.GetValue<string>("baseUrl");
