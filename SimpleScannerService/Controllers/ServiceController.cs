@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Saraff.Twain;
 using Saraff.Twain.Aux;
 using System.Drawing;
 
@@ -39,81 +38,42 @@ namespace SimpleScannerService.Controllers
         {
             try
             {
-                List<Source> list = new List<Source>();
-                string exceptionAuxX86 = "";
-                string exceptionAuxMSIL = "";
-                TwainExternalProcess.Execute(Helpers.AuxX86Path(),
-                    twain =>
-                    {
-                        try
-                        {
-                            for (var i = 0; i < twain.SourcesCount; i++)
-                            {
-                                list.Add(new Source
-                                {
-                                    Id = i,
-                                    Name = twain.GetSourceProductName(i),
-                                    Platform = "x32",
-                                    TwainVersion = twain.IsTwain2Supported ? 2 : 1,
-                                    IsDefault = twain.SourceIndex == i
-                                });
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            exceptionAuxX86 += ex.Message + " - " + ex.InnerException?.Message;
-                        }
-                    });
-                TwainExternalProcess.Execute(Helpers.AuxMSILPath(),
-                    twain =>
-                    {
-                        try
-                        {
-                            if (!twain.IsTwain2Supported)
-                            {
-                                return;
-                            }
-                            for (var i = 0; i < twain.SourcesCount; i++)
-                            {
-                                list.Add(new Source
-                                {
-                                    Id = i,
-                                    Name = twain.GetSourceProductName(i),
-                                    Platform = Environment.Is64BitOperatingSystem ? "x64" : "x32",
-                                    TwainVersion = twain.IsTwain2Supported ? 2 : 1,
-                                    IsDefault = twain.SourceIndex == i
-                                });
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            exceptionAuxMSIL += ex.Message + " - " + ex.InnerException?.Message;
-                        }
-                    });
+                List<string> list = new List<string>();
+                List<string> auxExceptionsList = new List<string>();
 
-                var auxException = "";
-
-                if (!string.IsNullOrEmpty(exceptionAuxX86))
-                    auxException = $"AuxX86 Exception: {exceptionAuxX86}";
-
-                if (!string.IsNullOrEmpty(exceptionAuxMSIL))
+                #region AuxMSIL
+                if (Environment.Is64BitOperatingSystem)
                 {
-                    if (string.IsNullOrEmpty(auxException))
-                        auxException += $"AuxMSIL Exception: {exceptionAuxMSIL}";
-                    else
-                        auxException += $" + AuxMSIL Exception: {exceptionAuxMSIL}";
+                    TwainExternalProcess.Execute(AuxService.AuxMSILPath(),
+                        twain =>
+                        {
+                            if (!twain.IsTwain2Supported) return;
+                            for (var i = 0; i < twain.SourcesCount; i++)
+                            {
+                                list.Add(twain.GetSourceProductName(i));
+                            }
+                        });
                 }
+                #endregion
 
+                #region AuxX86
+                TwainExternalProcess.Execute(AuxService.AuxX86Path(),
+                    twain =>
+                    {
+                        for (var i = 0; i < twain.SourcesCount; i++)
+                        {
+                            list.Add(twain.GetSourceProductName(i));
+                        }
+                    });
+                #endregion
+
+                var auxException = string.Join(" + ", auxExceptionsList);
                 if (!string.IsNullOrEmpty(auxException))
                 {
-                    return StatusCode(StatusCodes.Status406NotAcceptable, new
-                    {
-                        Code = Errors.General,
-                        Message = auxException
-                    });
+                    throw new Exception(auxException);
                 }
 
-                return Ok(list);
+                return Ok(list.Distinct().ToArray());
             }
             catch (Exception ex)
             {
@@ -130,45 +90,21 @@ namespace SimpleScannerService.Controllers
         {
             try
             {
-                SourceDetails? sourceDetails = null;
-
-                string exceptionAuxMSIL = "";
-                string exceptionAuxX86 = "";
-                bool exceptionOpenScanner = false;
+                AuxResponse<SourceDetails> sourceDetails = new AuxResponse<SourceDetails>();
 
                 //Firstly, let's try AuxMSIL
                 #region AuxMSIL
                 if (Environment.Is64BitOperatingSystem)
                 {
-                    TwainExternalProcess.Execute(Helpers.AuxMSILPath(),
+                    TwainExternalProcess.Execute(AuxService.AuxMSILPath(),
                         twain =>
                         {
-                            try
-                            {
-                                if (!twain.IsTwain2Supported)
-                                {
-                                    return;
-                                }
-                                sourceDetails = Helpers.GetSourceDetails(twain, ScannerName.Trim());
-                            }
-                            catch (Saraff.Twain.TwainException ex)
-                            {
-                                if (ex.ConditionCode == Saraff.Twain.TwCC.CheckDeviceOnline)
-                                    exceptionOpenScanner = true;
-                                else
-                                    exceptionAuxMSIL += ex.Message + " - " + ex.InnerException?.Message;
-                            }
-                            catch (Exception ex)
-                            {
-                                exceptionAuxMSIL += ex.Message + " - " + ex.InnerException?.Message;
-                            }
+                            if (!twain.IsTwain2Supported) return;
+                            sourceDetails = AuxService.GetSourceDetails(twain, ScannerName.Trim(), "AuxMSIL");
                         });
                 }
                 #endregion
-
-                if (sourceDetails != null)
-                    return Ok(sourceDetails);
-                if (exceptionOpenScanner)
+                if (sourceDetails.ExceptionOpenScanner)
                 {
                     return StatusCode(StatusCodes.Status406NotAcceptable, new
                     {
@@ -178,31 +114,17 @@ namespace SimpleScannerService.Controllers
                 }
 
                 //Let's try AuxX86Path if we couldn't find the source
-                #region AuxX86
-                TwainExternalProcess.Execute(Helpers.AuxX86Path(),
+                if (!sourceDetails.ScannerFound)
+                {
+                    #region AuxX86
+                    TwainExternalProcess.Execute(AuxService.AuxX86Path(),
                         twain =>
                         {
-                            try
-                            {
-                                sourceDetails = Helpers.GetSourceDetails(twain, ScannerName.Trim());
-                            }
-                            catch (Saraff.Twain.TwainException ex)
-                            {
-                                if (ex.ConditionCode == Saraff.Twain.TwCC.CheckDeviceOnline)
-                                    exceptionOpenScanner = true;
-                                else
-                                    exceptionAuxX86 += ex.Message + " - " + ex.InnerException?.Message;
-                            }
-                            catch (Exception ex)
-                            {
-                                exceptionAuxX86 += ex.Message + " - " + ex.InnerException?.Message;
-                            }
+                            sourceDetails = AuxService.GetSourceDetails(twain, ScannerName.Trim(), "AuxX86");
                         });
-                #endregion
-
-                if (sourceDetails != null)
-                    return Ok(sourceDetails);
-                if (exceptionOpenScanner)
+                    #endregion
+                }
+                if (sourceDetails.ExceptionOpenScanner)
                 {
                     return StatusCode(StatusCodes.Status406NotAcceptable, new
                     {
@@ -211,27 +133,22 @@ namespace SimpleScannerService.Controllers
                     });
                 }
 
-
-                var auxException = "";
-                if (!string.IsNullOrEmpty(exceptionAuxX86))
-                    auxException = $"AuxX86 Exception: {exceptionAuxX86}";
-                if (!string.IsNullOrEmpty(exceptionAuxMSIL))
-                {
-                    if (string.IsNullOrEmpty(auxException))
-                        auxException += $"AuxMSIL Exception: {exceptionAuxMSIL}";
-                    else
-                        auxException += $" + AuxMSIL Exception: {exceptionAuxMSIL}";
-                }
+                var auxException = string.Join(" + ", sourceDetails.AuxExceptionsList);
                 if (!string.IsNullOrEmpty(auxException))
                 {
                     throw new Exception(auxException);
                 }
 
-                return StatusCode(StatusCodes.Status406NotAcceptable, new
+                if (!sourceDetails.ScannerFound)
                 {
-                    Code = Errors.ScannerNotAvailable,
-                    Message = $"'{ScannerName}' scanner is not available"
-                });
+                    return StatusCode(StatusCodes.Status406NotAcceptable, new
+                    {
+                        Code = Errors.ScannerNotAvailable,
+                        Message = $"'{ScannerName}' scanner is not available"
+                    });
+                }
+
+                return Ok(sourceDetails.Response);
             }
             catch (Exception ex)
             {
@@ -250,107 +167,36 @@ namespace SimpleScannerService.Controllers
             [FromQuery] bool? DuplexEnabled,
             [FromQuery] string? Color, //RGB, BlackWhite, Gray
             [FromQuery] string? PaperSize, //A4,A3...etc
-            [FromQuery] int? Resolution
+            [FromQuery] int? Resolution,
+            [FromQuery] bool? RemoveBlankPages
         )
         {
             try
             {
-                bool sourceFound = false;
-
-                string exceptionAuxMSIL = "";
-                string exceptionAuxX86 = "";
-                bool exceptionOpenScanner = false;
-
-                List<Image> scannedImages = new List<Image>();
+                AuxResponse<List<Image>> scannedImages = new AuxResponse<List<Image>>();
+                var parameters = new ScanningParameters()
+                {
+                    Source = ScannerName,
+                    DuplexEnabled = DuplexEnabled,
+                    Color = Color,
+                    PaperSize = PaperSize,
+                    Resolution = Resolution,
+                    RemoveBlankPages = RemoveBlankPages
+                };
 
                 //Firstly, let's try AuxMSIL
                 #region AuxMSIL
                 if (Environment.Is64BitOperatingSystem)
                 {
-                    TwainExternalProcess.Execute(Helpers.AuxMSILPath(),
+                    TwainExternalProcess.Execute(AuxService.AuxMSILPath(),
                         twain =>
                         {
-                            try
-                            {
-                                if (!twain.IsTwain2Supported)
-                                {
-                                    return;
-                                }
-                                for (var i = 0; i < twain.SourcesCount; i++)
-                                {
-                                    if (ScannerName.Trim() == twain.GetSourceProductName(i))
-                                    {
-                                        twain.SourceIndex = i;
-                                        twain.OpenDataSource();
-                                        sourceFound = true;
-
-                                        twain.SetupMemXferEvent += (sender, e) =>
-                                        {
-                                            if (twain.Capabilities.XferMech.GetCurrent() == TwSX.Memory)
-                                            {
-                                                if (TiffMemXfer.Current == null)
-                                                {
-                                                    TiffMemXfer.Create((int)e.BufferSize);
-                                                }
-                                                if (e.ImageInfo.PixelType == TwPixelType.Palette)
-                                                {
-                                                    Twain32.ColorPalette _palette = twain.Palette.Get();
-                                                    TiffMemXfer.Current.ColorMap = new ushort[_palette.Colors.Length * 3];
-                                                    for (int i = 0; i < _palette.Colors.Length; i++)
-                                                    {
-                                                        TiffMemXfer.Current.ColorMap[i] = (ushort)(_palette.Colors[i].R);
-                                                        TiffMemXfer.Current.ColorMap[i + _palette.Colors.Length] = (ushort)(_palette.Colors[i].G);
-                                                        TiffMemXfer.Current.ColorMap[i + (_palette.Colors.Length << 1)] = (ushort)(_palette.Colors[i].B);
-                                                    }
-                                                }
-                                            }
-                                            else
-                                            { // MemFile
-                                                MemFileXfer.Create((int)e.BufferSize, twain.Capabilities.ImageFileFormat.GetCurrent().ToString().ToLower());
-                                            }
-                                        };
-                                        twain.MemXferEvent += new System.EventHandler<Saraff.Twain.Twain32.MemXferEventArgs>(Helpers._twain32_MemXferEvent);
-
-                                        twain.EndXfer += (sender, e) =>
-                                        {
-                                            try
-                                            {
-                                                using (var image = e.Image)
-                                                {
-                                                    if (image != null)
-                                                    {
-                                                        Bitmap deepCopy = new Bitmap(image);
-                                                        scannedImages.Add(deepCopy);
-                                                    }
-                                                }
-                                            }
-                                            catch
-                                            {
-                                            }
-                                        };
-                                        twain.Acquire();
-                                        break;
-                                    }
-                                }
-                            }
-                            catch (Saraff.Twain.TwainException ex)
-                            {
-                                if (ex.ConditionCode == Saraff.Twain.TwCC.CheckDeviceOnline)
-                                    exceptionOpenScanner = true;
-                                else
-                                    exceptionAuxMSIL += ex.Message + " - " + ex.InnerException?.Message;
-                            }
-                            catch (Exception ex)
-                            {
-                                exceptionAuxMSIL += ex.Message + " - " + ex.InnerException?.Message;
-                            }
+                            if (!twain.IsTwain2Supported) return;
+                            scannedImages = AuxService.GetScannedImages(twain, "AuxMSIL", parameters);
                         });
                 }
                 #endregion
-
-                if (sourceFound)
-                    return File(Helpers.ToStream(scannedImages.FirstOrDefault()), "image/jpeg");
-                if (exceptionOpenScanner)
+                if (scannedImages.ExceptionOpenScanner)
                 {
                     return StatusCode(StatusCodes.Status406NotAcceptable, new
                     {
@@ -360,86 +206,17 @@ namespace SimpleScannerService.Controllers
                 }
 
                 //Let's try AuxX86Path if we couldn't find the source
-                #region AuxX86
-                TwainExternalProcess.Execute(Helpers.AuxX86Path(),
+                if (!scannedImages.ScannerFound)
+                {
+                    #region AuxX86
+                    TwainExternalProcess.Execute(AuxService.AuxX86Path(),
                         twain =>
                         {
-                            try
-                            {
-                                for (var i = 0; i < twain.SourcesCount; i++)
-                                {
-                                    if (ScannerName.Trim() == twain.GetSourceProductName(i))
-                                    {
-                                        twain.SourceIndex = i;
-                                        twain.OpenDataSource();
-                                        sourceFound = true;
-
-                                        twain.SetupMemXferEvent += (sender, e) =>
-                                        {
-                                            if (twain.Capabilities.XferMech.GetCurrent() == TwSX.Memory)
-                                            {
-                                                if (TiffMemXfer.Current == null)
-                                                {
-                                                    TiffMemXfer.Create((int)e.BufferSize);
-                                                }
-                                                if (e.ImageInfo.PixelType == TwPixelType.Palette)
-                                                {
-                                                    Twain32.ColorPalette _palette = twain.Palette.Get();
-                                                    TiffMemXfer.Current.ColorMap = new ushort[_palette.Colors.Length * 3];
-                                                    for (int i = 0; i < _palette.Colors.Length; i++)
-                                                    {
-                                                        TiffMemXfer.Current.ColorMap[i] = (ushort)(_palette.Colors[i].R);
-                                                        TiffMemXfer.Current.ColorMap[i + _palette.Colors.Length] = (ushort)(_palette.Colors[i].G);
-                                                        TiffMemXfer.Current.ColorMap[i + (_palette.Colors.Length << 1)] = (ushort)(_palette.Colors[i].B);
-                                                    }
-                                                }
-                                            }
-                                            else
-                                            { // MemFile
-                                                MemFileXfer.Create((int)e.BufferSize, twain.Capabilities.ImageFileFormat.GetCurrent().ToString().ToLower());
-                                            }
-                                        };
-                                        twain.MemXferEvent += new System.EventHandler<Saraff.Twain.Twain32.MemXferEventArgs>(Helpers._twain32_MemXferEvent);
-
-                                        twain.EndXfer += (sender, e) =>
-                                        {
-                                            try
-                                            {
-                                                using (var image = e.Image)
-                                                {
-                                                    if (image != null)
-                                                    {
-                                                        Bitmap deepCopy = new Bitmap(image);
-                                                        scannedImages.Add(deepCopy);
-                                                    }
-                                                }
-                                            }
-                                            catch
-                                            {
-                                            }
-                                        };
-                                        twain.Acquire();
-                                        break;
-                                    }
-                                }
-                            }
-                            catch (Saraff.Twain.TwainException ex)
-                            {
-                                if (ex.ConditionCode == Saraff.Twain.TwCC.CheckDeviceOnline)
-                                    exceptionOpenScanner = true;
-                                else
-                                    exceptionAuxX86 += ex.Message + " - " + ex.InnerException?.Message;
-                            }
-                            catch (Exception ex)
-                            {
-                                exceptionAuxX86 += ex.Message + " - " + ex.InnerException?.Message;
-                            }
+                            scannedImages = AuxService.GetScannedImages(twain, "AuxX86", parameters);
                         });
-                #endregion
-
-                if (sourceFound)
-                    return File(Helpers.ToStream(scannedImages.FirstOrDefault()), "image/jpeg");
-                if (exceptionOpenScanner)
+                    #endregion
+                }
+                if (scannedImages.ExceptionOpenScanner)
                 {
                     return StatusCode(StatusCodes.Status406NotAcceptable, new
                     {
@@ -448,26 +225,52 @@ namespace SimpleScannerService.Controllers
                     });
                 }
 
-                var auxException = "";
-                if (!string.IsNullOrEmpty(exceptionAuxX86))
-                    auxException = $"AuxX86 Exception: {exceptionAuxX86}";
-                if (!string.IsNullOrEmpty(exceptionAuxMSIL))
-                {
-                    if (string.IsNullOrEmpty(auxException))
-                        auxException += $"AuxMSIL Exception: {exceptionAuxMSIL}";
-                    else
-                        auxException += $" + AuxMSIL Exception: {exceptionAuxMSIL}";
-                }
+                var auxException = string.Join(" + ", scannedImages.AuxExceptionsList);
                 if (!string.IsNullOrEmpty(auxException))
                 {
                     throw new Exception(auxException);
                 }
 
-                return StatusCode(StatusCodes.Status406NotAcceptable, new
+                if (!scannedImages.ScannerFound)
                 {
-                    Code = Errors.ScannerNotAvailable,
-                    Message = $"'{ScannerName}' scanner is not available"
-                });
+                    return StatusCode(StatusCodes.Status406NotAcceptable, new
+                    {
+                        Code = Errors.ScannerNotAvailable,
+                        Message = $"'{ScannerName}' scanner is not available"
+                    });
+                }
+
+                if (scannedImages.Response == null || scannedImages.Response.Count == 0)
+                {
+                    return StatusCode(StatusCodes.Status406NotAcceptable, new
+                    {
+                        Code = Errors.NoImagesScanned,
+                        Message = $"No images could be scanned"
+                    });
+                }
+
+                switch (FileType)
+                {
+                    case null:
+                    case FileTypes.PDF:
+                        var pdf = Helpers.CreatePdfDocument(scannedImages.Response);
+                        Helpers.CleanTempFolder();
+                        return File(pdf, "application/pdf");
+                    case FileTypes.JPEG:
+                        var jpeg = Helpers.ToStream(scannedImages.Response.FirstOrDefault());
+                        Helpers.CleanTempFolder();
+                        return File(jpeg, "image/jpeg");
+                    case FileTypes.ZIP:
+                        var zip = Helpers.CreateZipCollection(scannedImages.Response);
+                        Helpers.CleanTempFolder();
+                        return File(zip, "application/zip");
+                    default:
+                        return StatusCode(StatusCodes.Status406NotAcceptable, new
+                        {
+                            Code = Errors.InvalidFileType,
+                            Message = $"Invalid file type: '{FileType}'"
+                        });
+                }
             }
             catch (Exception ex)
             {
