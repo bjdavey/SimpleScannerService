@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?define publish="$(var.SimpleScannerService.ProjectDir)\publish"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" Name="Simple Scanner Service" Language="1033" Version="1.0.0.0" Manufacturer="BJ" UpgradeCode="0b6a79de-0292-4fb6-af0a-b25659c26c40">
+  <Product Id="96656A28-A9EC-4589-8275-C7D6E7B0A247" Name="Simple Scanner Service" Language="1033" Version="1.2.1" Manufacturer="BJ" UpgradeCode="82158D80-0A39-4E50-9502-4947E9E475BA">
     <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
@@ -14,7 +14,9 @@
   </Product>
 
   <Fragment>
+        
     <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="StartupFolder"/>
       <Directory Id="ProgramFilesFolder">
         <Directory Id="INSTALLFOLDER" Name="!(bind.property.ProductName)" />
       </Directory>
@@ -24,18 +26,20 @@
   <Fragment>
     
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
-
-      <!-- Auto-start via Registry -->
-      <Component Id="MerliniAssistanceAutostart">
-          <RegistryValue Id="MerAs.rst" Root="HKMU" Action="write"
-                   Key="Software\Microsoft\Windows\CurrentVersion\Run"
-                   Name="Simple Scanner Service - by BJ Davey"
-                   Value="[INSTALLFOLDER]SimpleScannerService.exe"
-                   Type="string" />
-      </Component>
+      
+        <Component>
+          <Shortcut 
+            Id="Autostart" 
+            Directory="StartupFolder" 
+            Name="SimpleScannerService" 
+            Description="Simple Scanner Service"
+            WorkingDirectory="INSTALLFOLDER"
+            Target="[INSTALLFOLDER]SimpleScannerService.exe"/> 
+            <RegistryValue Root="HKCU" Key="Software\[Manufacturer]\[ProductName]" Type="string" Value="" KeyPath="yes" />
+        </Component>
 
     </ComponentGroup>
-
+    
     <CustomAction Id="EXECUTE_AFTER_FINALIZE"                  
               Directory="INSTALLFOLDER"
               Return="asyncNoWait"

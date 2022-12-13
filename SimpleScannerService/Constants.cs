@@ -15,5 +15,7 @@
         CouldNotOpenScanner = 3,
         TransferError = 4,
         InvalidFileType = 5,
+        NoImagesScanned = 6,
+        InvalidScannerParameter = 7
     }
 }

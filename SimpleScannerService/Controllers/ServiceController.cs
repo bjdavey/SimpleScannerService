@@ -1,13 +1,6 @@
-using iTextSharp.text;
-using iTextSharp.text.pdf;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using NTwain;
-using NTwain.Data;
-using System.Drawing.Imaging;
-using System.IO.Compression;
-using System.Reflection;
-using Image = System.Drawing.Image;
+using Saraff.Twain.Aux;
 
 namespace SimpleScannerService.Controllers
 {
@@ -16,15 +9,10 @@ namespace SimpleScannerService.Controllers
     [Route("ScannerService/[action]")]
     public class ServiceController : ControllerBase
     {
-        private readonly ILogger<ServiceController> _logger;
 
-        private TwainSession twainSession;
-        public ServiceController(ILogger<ServiceController> logger)
+        public ServiceController()
         {
-            var appId = TWIdentity.CreateFromAssembly(DataGroups.Image, Assembly.GetExecutingAssembly());
-            twainSession = new TwainSession(appId);
 
-            _logger = logger;
         }
 
         [HttpGet]
@@ -45,14 +33,46 @@ namespace SimpleScannerService.Controllers
         }
 
         [HttpGet]
-        public ActionResult GetAvailableScanners()
+        public ActionResult GetAvailableScanners([FromQuery] bool TwainV2Support = true)
         {
             try
             {
-                twainSession.Open();
-                var list = twainSession.GetSources().ToList().Select(source => source.Name).ToArray();
-                twainSession.Close();
-                return Ok(list);
+                List<string> list = new List<string>();
+                List<string> auxExceptionsList = new List<string>();
+
+                #region AuxMSIL
+                if (Environment.Is64BitOperatingSystem && TwainV2Support)
+                {
+                    TwainExternalProcess.Execute(AuxService.AuxMSILPath(),
+                        twain =>
+                        {
+                            if (!twain.IsTwain2Supported) return;
+                            for (var i = 0; i < twain.SourcesCount; i++)
+                            {
+                                list.Add(twain.GetSourceProductName(i));
+                            }
+                        });
+                }
+                #endregion
+
+                #region AuxX86
+                TwainExternalProcess.Execute(AuxService.AuxX86Path(),
+                    twain =>
+                    {
+                        for (var i = 0; i < twain.SourcesCount; i++)
+                        {
+                            list.Add(twain.GetSourceProductName(i));
+                        }
+                    });
+                #endregion
+
+                var auxException = string.Join(" + ", auxExceptionsList);
+                if (!string.IsNullOrEmpty(auxException))
+                {
+                    throw new Exception(auxException);
+                }
+
+                return Ok(list.Distinct().ToArray());
             }
             catch (Exception ex)
             {
@@ -65,15 +85,63 @@ namespace SimpleScannerService.Controllers
         }
 
         [HttpGet]
-        public ActionResult GetScannerDetails([FromQuery] string ScannerName)
+        public ActionResult GetScannerDetails(
+            [FromQuery] string ScannerName,
+            [FromQuery] bool TwainV2Support = true
+        )
         {
             try
             {
-                twainSession.Open();
+                AuxResponse<SourceDetails> sourceDetails = new AuxResponse<SourceDetails>();
 
-                var scanner = twainSession.GetSources().FirstOrDefault(x => x.Name == ScannerName);
+                //Firstly, let's try AuxMSIL
+                #region AuxMSIL
+                if (Environment.Is64BitOperatingSystem && TwainV2Support)
+                {
+                    TwainExternalProcess.Execute(AuxService.AuxMSILPath(),
+                        twain =>
+                        {
+                            if (!twain.IsTwain2Supported) return;
+                            sourceDetails = AuxService.GetSourceDetails(twain, ScannerName.Trim(), "AuxMSIL");
+                        });
+                }
+                #endregion
+                if (sourceDetails.ExceptionOpenScanner)
+                {
+                    return StatusCode(StatusCodes.Status406NotAcceptable, new
+                    {
+                        Code = Errors.CouldNotOpenScanner,
+                        Message = $"Could not open the scanner: '{ScannerName}'"
+                    });
+                }
 
-                if (scanner == null)
+                //Let's try AuxX86Path if we couldn't find the source
+                if (!sourceDetails.ScannerFound)
+                {
+                    #region AuxX86
+                    TwainExternalProcess.Execute(AuxService.AuxX86Path(),
+                        twain =>
+                        {
+                            sourceDetails = AuxService.GetSourceDetails(twain, ScannerName.Trim(), "AuxX86");
+                        });
+                    #endregion
+                }
+                if (sourceDetails.ExceptionOpenScanner)
+                {
+                    return StatusCode(StatusCodes.Status406NotAcceptable, new
+                    {
+                        Code = Errors.CouldNotOpenScanner,
+                        Message = $"Could not open the scanner: '{ScannerName}'"
+                    });
+                }
+
+                var auxException = string.Join(" + ", sourceDetails.AuxExceptionsList);
+                if (!string.IsNullOrEmpty(auxException))
+                {
+                    throw new Exception(auxException);
+                }
+
+                if (!sourceDetails.ScannerFound)
                 {
                     return StatusCode(StatusCodes.Status406NotAcceptable, new
                     {
@@ -82,30 +150,7 @@ namespace SimpleScannerService.Controllers
                     });
                 }
 
-                scanner.Open();
-
-                if (!scanner.IsOpen)
-                {
-                    return StatusCode(StatusCodes.Status406NotAcceptable, new
-                    {
-                        Code = Errors.CouldNotOpenScanner,
-                        Message = $"Could not open the scanner: '{scanner.Name}'"
-                    });
-                }
-
-                var result = new
-                {
-                    Name = scanner.Name,
-                    SupportDuplex = scanner.Capabilities.CapDuplexEnabled.IsSupported,
-                    SupportedColors = scanner.Capabilities.ICapPixelType?.GetValues()?.Select(x => x.ToString()),
-                    SupportedPaperSizes = scanner.Capabilities.ICapSupportedSizes?.GetValues()?.Select(x => x.ToString()),
-                    SupportedResolutions = scanner.Capabilities.ICapXResolution?.GetValues()?.Where(dpi => (dpi % 50) == 0).Select(x => x.Whole)
-                };
-
-                scanner.Close();
-                twainSession.Close();
-
-                return Ok(result);
+                return Ok(sourceDetails.Response);
             }
             catch (Exception ex)
             {
@@ -116,170 +161,139 @@ namespace SimpleScannerService.Controllers
                 });
             }
         }
-
-
-        [HttpGet]
-        public ActionResult GetAvailableScannersDetailed()
-        {
-            try
-            {
-                twainSession.Open();
-
-                var list = new List<dynamic>();
-
-                twainSession.GetSources().ToList().ForEach(source =>
-                {
-                    source.Open();
-                    if (source.IsOpen)
-                    {
-                        var item = new
-                        {
-                            Name = source.Name,
-                            SupportDuplex = source.Capabilities.CapDuplexEnabled.IsSupported,
-                            SupportedColors = source.Capabilities.ICapPixelType?.GetValues()?.Select(x => x.ToString()),
-                            SupportedPaperSizes = source.Capabilities.ICapSupportedSizes?.GetValues()?.Select(x => x.ToString()),
-                            SupportedResolutions = source.Capabilities.ICapXResolution?.GetValues()?.Where(dpi => (dpi % 50) == 0).Select(x => x.Whole)
-                        };
-                        list.Add(item);
-                        source.Close();
-                    }
-                });
-                twainSession.Close();
-                return Ok(list);
-
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(StatusCodes.Status406NotAcceptable, new
-                {
-                    Code = Errors.General,
-                    Message = ex.Message + " - " + ex.InnerException?.Message
-                });
-            }
-        }
-
 
         [HttpGet]
         public ActionResult Scan(
             [FromQuery] string? ScannerName,
             [FromQuery] FileTypes? FileType, //JPEG,PDF,ZIP
             [FromQuery] bool? DuplexEnabled,
-            [FromQuery] PixelType? Color, //RGB, BlackWhite, Gray
-            [FromQuery] SupportedSize? PaperSize, //A4,A3...etc
-            [FromQuery] int? Resolution
+            [FromQuery] string? Color, //RGB, BlackWhite, Gray
+            [FromQuery] string? PaperSize, //A4,A3...etc
+            [FromQuery] int? Resolution,
+            [FromQuery] bool? RemoveBlankPages,
+            [FromQuery] bool TwainV2Support = true
         )
         {
             try
             {
-                twainSession.Open();
-
-                List<Image> scannedImages = new List<Image>();
-                twainSession.DataTransferred += (s, e) =>
+                AuxResponse<List<Image>> scannedImages = new AuxResponse<List<Image>>();
+                var parameters = new ScanningParameters()
                 {
-                    if (e.NativeData != IntPtr.Zero)
-                    {
-                        var stream = e.GetNativeImageStream();
-                        if (stream != null)
+                    Source = ScannerName,
+                    DuplexEnabled = DuplexEnabled,
+                    Color = Color,
+                    PaperSize = PaperSize,
+                    Resolution = Resolution,
+                    RemoveBlankPages = RemoveBlankPages
+                };
+
+                //Firstly, let's try AuxMSIL
+                #region AuxMSIL
+                if (Environment.Is64BitOperatingSystem && TwainV2Support)
+                {
+                    TwainExternalProcess.Execute(AuxService.AuxMSILPath(),
+                        twain =>
                         {
-                            scannedImages.Add(Image.FromStream(stream));
-                        }
+                            if (!twain.IsTwain2Supported) return;
+                            scannedImages = AuxService.GetScannedImages(twain, "AuxMSIL", parameters);
+                        });
+                    if (scannedImages.InvalidScannerParameter)
+                    {
+                        return StatusCode(StatusCodes.Status406NotAcceptable, new
+                        {
+                            Code = Errors.InvalidScannerParameter,
+                            Message = $"Invalid Scanner Parameter"
+                        });
                     }
-                };
-
-                var TransferError = false;
-                twainSession.TransferError += (s, e) =>
-                {
-                    TransferError = true;
-                };
-                if (TransferError)
-                {
-                    return StatusCode(StatusCodes.Status417ExpectationFailed, new
+                    if (scannedImages.ExceptionOpenScanner)
                     {
-                        Code = Errors.TransferError,
-                        Message = $"Transfer Error"
-                    });
+                        return StatusCode(StatusCodes.Status406NotAcceptable, new
+                        {
+                            Code = Errors.CouldNotOpenScanner,
+                            Message = $"Could not open the scanner: '{scannedImages.SourceName}'"
+                        });
+                    }
+                }
+                #endregion
+
+                //Let's try AuxX86Path if we couldn't find the source
+                if (!scannedImages.ScannerFound)
+                {
+                    #region AuxX86
+                    TwainExternalProcess.Execute(AuxService.AuxX86Path(),
+                        twain =>
+                        {
+                            scannedImages = AuxService.GetScannedImages(twain, "AuxX86", parameters);
+                        });
+                    if (scannedImages.InvalidScannerParameter)
+                    {
+                        return StatusCode(StatusCodes.Status406NotAcceptable, new
+                        {
+                            Code = Errors.InvalidScannerParameter,
+                            Message = $"Invalid Scanner Parameter"
+                        });
+                    }
+                    if (scannedImages.ExceptionOpenScanner)
+                    {
+                        return StatusCode(StatusCodes.Status406NotAcceptable, new
+                        {
+                            Code = Errors.CouldNotOpenScanner,
+                            Message = $"Could not open the scanner: '{scannedImages.SourceName}'"
+                        });
+                    }
+                    #endregion
                 }
 
-                twainSession.Open();
-
-                DataSource scanner = twainSession.DefaultSource;
-                if (scanner == null)
+                var auxException = string.Join(" + ", scannedImages.AuxExceptionsList);
+                if (!string.IsNullOrEmpty(auxException))
                 {
-                    return StatusCode(StatusCodes.Status406NotAcceptable, new
-                    {
-                        Code = Errors.NoScannerFound,
-                        Message = $"Could not find any scanner"
-                    });
+                    throw new Exception(auxException);
                 }
 
-                if (ScannerName != null)
+                if (!scannedImages.ScannerFound)
                 {
-                    var value = twainSession.GetSources().FirstOrDefault(x => x.Name == ScannerName);
-                    if (value != null)
+                    if (string.IsNullOrEmpty(ScannerName))
                     {
-                        scanner = value;
+                        return StatusCode(StatusCodes.Status406NotAcceptable, new
+                        {
+                            Code = Errors.NoScannerFound,
+                            Message = $"Could not find any scanner"
+                        });
                     }
                     else
                     {
                         return StatusCode(StatusCodes.Status406NotAcceptable, new
                         {
                             Code = Errors.ScannerNotAvailable,
-                            Message = $"'{ScannerName}' scanner is not available"
+                            Message = $"'{scannedImages.SourceName}' scanner is not available"
                         });
                     }
                 }
-                scanner.Open();
-                if (!scanner.IsOpen)
+
+                if (scannedImages.Response == null || scannedImages.Response.Count == 0)
                 {
                     return StatusCode(StatusCodes.Status406NotAcceptable, new
                     {
-                        Code = Errors.CouldNotOpenScanner,
-                        Message = $"Could not open the scanner: '{scanner.Name}'"
+                        Code = Errors.NoImagesScanned,
+                        Message = $"No images could be scanned"
                     });
                 }
-
-                if (scanner.Capabilities.CapDuplexEnabled.IsSupported)
-                {
-                    if (DuplexEnabled == null) DuplexEnabled = true;
-                    var value = (bool)DuplexEnabled ? BoolType.True : BoolType.False;
-                    scanner.Capabilities.CapDuplexEnabled.SetValue(value);
-                }
-
-                if (scanner.Capabilities.ICapPixelType.IsSupported)
-                {
-                    if (Color == null) Color = PixelType.RGB;
-                    scanner.Capabilities.ICapPixelType.SetValue((PixelType)Color);
-                }
-
-                if (PaperSize != null && scanner.Capabilities.ICapSupportedSizes.IsSupported)
-                {
-                    scanner.Capabilities.ICapSupportedSizes.SetValue((SupportedSize)PaperSize);
-                }
-
-                if (scanner.Capabilities.ICapXResolution.IsSupported && scanner.Capabilities.ICapYResolution.IsSupported)
-                {
-                    if (Resolution == null) Resolution = 200;
-                    var value = (TWFix32)Resolution;
-                    scanner.Capabilities.ICapXResolution.SetValue(value);
-                    scanner.Capabilities.ICapYResolution.SetValue(value);
-                }
-
-                // Start Scan
-                scanner.Enable(SourceEnableMode.NoUI, false, IntPtr.Zero);
-                //scanner.Enable(SourceEnableMode.ShowUI, false, IntPtr.Zero);
-
-                scanner.Close();
-                twainSession.Close();
 
                 switch (FileType)
                 {
                     case null:
                     case FileTypes.PDF:
-                        return File(CreatePdfDocument(scannedImages), "application/pdf");
+                        var pdf = Helpers.CreatePdfDocument(scannedImages.Response);
+                        Helpers.CleanTempFolder();
+                        return File(pdf, "application/pdf");
                     case FileTypes.JPEG:
-                        return File(ToStream(scannedImages.FirstOrDefault()), "image/jpeg");
+                        var jpeg = Helpers.ToStream(scannedImages.Response.FirstOrDefault());
+                        Helpers.CleanTempFolder();
+                        return File(jpeg, "image/jpeg");
                     case FileTypes.ZIP:
-                        return File(CreateZipCollection(scannedImages), "application/zip");
+                        var zip = Helpers.CreateZipCollection(scannedImages.Response);
+                        Helpers.CleanTempFolder();
+                        return File(zip, "application/zip");
                     default:
                         return StatusCode(StatusCodes.Status406NotAcceptable, new
                         {
@@ -287,7 +301,6 @@ namespace SimpleScannerService.Controllers
                             Message = $"Invalid file type: '{FileType}'"
                         });
                 }
-
             }
             catch (Exception ex)
             {
@@ -298,59 +311,5 @@ namespace SimpleScannerService.Controllers
                 });
             }
         }
-
-        private Stream ToStream(Image image)
-        {
-            var stream = new System.IO.MemoryStream();
-            image.Save(stream, ImageFormat.Jpeg);
-            stream.Position = 0;
-            return stream;
-        }
-
-        private byte[] CreateZipCollection(List<Image> images)
-        {
-            using (MemoryStream ms = new MemoryStream())
-            {
-                using (var archive = new ZipArchive(ms, ZipArchiveMode.Create, true))
-                {
-                    for (var i = 0; i < images.Count; i++)
-                    {
-                        var img = images[i];
-                        var name = $"{i + 1}.jpeg";
-                        var entry = archive.CreateEntry(name);
-                        using (var entryStream = entry.Open())
-                        {
-                            ToStream(img).CopyTo(entryStream);
-                        }
-                    }
-                }
-                ms.Position = 0;
-                return ms.ToArray(); ;
-            }
-        }
-
-        private static byte[] CreatePdfDocument(List<Image> images)
-        {
-            byte[] pdfBytes;
-            using (MemoryStream ms = new MemoryStream())
-            {
-                Document doc = new Document(PageSize.A4);
-                PdfWriter writer = PdfWriter.GetInstance(doc, ms);
-                doc.Open();
-                images.ForEach(image =>
-                {
-                    doc.NewPage();
-                    iTextSharp.text.Image img = iTextSharp.text.Image.GetInstance(image, ImageFormat.Jpeg);
-                    img.Alignment = Element.ALIGN_CENTER;
-                    img.ScaleToFit(doc.PageSize.Width - 10, doc.PageSize.Height - 10);
-                    doc.Add(img);
-                });
-                doc.Close();
-                pdfBytes = ms.ToArray();
-            }
-            return pdfBytes;
-        }
-
-
     }
 }

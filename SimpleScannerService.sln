@@ -3,9 +3,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.3.32922.545
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleScannerService", "SimpleScannerService\SimpleScannerService.csproj", "{A1B13980-5B91-42D8-A026-8D9913F60A83}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SimpleScannerService", "SimpleScannerService\SimpleScannerService.csproj", "{A1B13980-5B91-42D8-A026-8D9913F60A83}"
 EndProject
 Project("{930C7802-8A8C-48F9-8165-68863BCCD9DD}") = "SimpleScannerService.Installer", "SimpleScannerService.Installer\SimpleScannerService.Installer.wixproj", "{B5F6ED7C-0B65-4EC0-ACF4-1AECA961BDD4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleScannerService.AUX_MSIL", "SimpleScannerService.AUX_MSIL\SimpleScannerService.AUX_MSIL.csproj", "{FCDA87F9-E477-479B-A68C-383F836A822C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleScannerService.AUX_x86", "SimpleScannerService.AUX_x86\SimpleScannerService.AUX_x86.csproj", "{706C3C0B-006A-449C-AD55-6727B2EA2C58}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -31,6 +35,22 @@ Global
 		{B5F6ED7C-0B65-4EC0-ACF4-1AECA961BDD4}.Release|Any CPU.Build.0 = Release|x86
 		{B5F6ED7C-0B65-4EC0-ACF4-1AECA961BDD4}.Release|x86.ActiveCfg = Release|x86
 		{B5F6ED7C-0B65-4EC0-ACF4-1AECA961BDD4}.Release|x86.Build.0 = Release|x86
+		{FCDA87F9-E477-479B-A68C-383F836A822C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FCDA87F9-E477-479B-A68C-383F836A822C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FCDA87F9-E477-479B-A68C-383F836A822C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{FCDA87F9-E477-479B-A68C-383F836A822C}.Debug|x86.Build.0 = Debug|Any CPU
+		{FCDA87F9-E477-479B-A68C-383F836A822C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FCDA87F9-E477-479B-A68C-383F836A822C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FCDA87F9-E477-479B-A68C-383F836A822C}.Release|x86.ActiveCfg = Release|Any CPU
+		{FCDA87F9-E477-479B-A68C-383F836A822C}.Release|x86.Build.0 = Release|Any CPU
+		{706C3C0B-006A-449C-AD55-6727B2EA2C58}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{706C3C0B-006A-449C-AD55-6727B2EA2C58}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{706C3C0B-006A-449C-AD55-6727B2EA2C58}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{706C3C0B-006A-449C-AD55-6727B2EA2C58}.Debug|x86.Build.0 = Debug|Any CPU
+		{706C3C0B-006A-449C-AD55-6727B2EA2C58}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{706C3C0B-006A-449C-AD55-6727B2EA2C58}.Release|Any CPU.Build.0 = Release|Any CPU
+		{706C3C0B-006A-449C-AD55-6727B2EA2C58}.Release|x86.ActiveCfg = Release|Any CPU
+		{706C3C0B-006A-449C-AD55-6727B2EA2C58}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
