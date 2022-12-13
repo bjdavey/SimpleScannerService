@@ -1,6 +1,5 @@
 ﻿using Saraff.Twain;
 using Saraff.Twain.Aux;
-using System.Drawing;
 using Image = System.Drawing.Image;
 
 namespace SimpleScannerService
@@ -28,6 +27,7 @@ namespace SimpleScannerService
         public static AuxResponse<SourceDetails> GetSourceDetails(ITwain32 twain, string sourceName, string auxName)
         {
             var auxResponse = new AuxResponse<SourceDetails>();
+            auxResponse.SourceName = sourceName;
             try
             {
                 for (var i = 0; i < twain.SourcesCount; i++)
@@ -99,6 +99,7 @@ namespace SimpleScannerService
                 //Set source (default if not specified)
                 if (!string.IsNullOrEmpty(scanningParameters.Source))
                 {
+                    auxResponse.SourceName = scanningParameters.Source.Trim();
                     for (var i = 0; i < twain.SourcesCount; i++)
                     {
                         if (scanningParameters.Source.Trim() == twain.GetSourceProductName(i))
@@ -111,6 +112,7 @@ namespace SimpleScannerService
                 }
                 else
                 {
+                    auxResponse.SourceName = twain.GetSourceProductName(0);
                     auxResponse.ScannerFound = true;
                 }
 
@@ -118,6 +120,56 @@ namespace SimpleScannerService
                     return auxResponse;
 
                 twain.OpenDataSource();
+
+
+                try
+                {
+                    if (scanningParameters.DuplexEnabled.HasValue)
+                    {
+                        twain.Capabilities.DuplexEnabled.Set((bool)scanningParameters.DuplexEnabled);
+                    }
+
+                    if (!string.IsNullOrEmpty(scanningParameters.Color))
+                    {
+                        TwPixelType twPixelType;
+                        if (Enum.TryParse(scanningParameters.Color, out twPixelType))
+                            twain.Capabilities.PixelType.Set(twPixelType);
+                    }
+
+                    if (!string.IsNullOrEmpty(scanningParameters.PaperSize))
+                    {
+                        TwSS twSupportedSize;
+                        if (Enum.TryParse(scanningParameters.PaperSize, out twSupportedSize))
+                            twain.Capabilities.SupportedSizes.Set(twSupportedSize);
+                    }
+
+                    if (scanningParameters.Resolution.HasValue)
+                    {
+                        twain.Capabilities.XResolution.Set((int)scanningParameters.Resolution);
+                    }
+
+                    if (scanningParameters.RemoveBlankPages.HasValue)
+                    {
+                        twain.Capabilities.AutoDiscardBlankPages.Set(TwBP.Auto);
+                        //if (twain.Capabilities.AutoDiscardBlankPages.IsSupported(TwQC.Set))
+                        //{
+                        //    twain.Capabilities.AutoDiscardBlankPages.Set(TwBP.Auto);
+                        //}
+                    }
+
+                }
+                catch (TwainException ex)
+                {
+                    auxResponse.InvalidScannerParameter = true;
+                    return auxResponse;
+                    //if (ex.ConditionCode == TwCC.BadValue)
+                    //{
+                    //    auxResponse.InvalidScannerParameter = true;
+                    //    return auxResponse;
+                    //}
+                }
+
+
 
                 twain.Capabilities.XferMech.Set(TwSX.File);
                 twain.SetupFileXferEvent += (sender, e) =>
