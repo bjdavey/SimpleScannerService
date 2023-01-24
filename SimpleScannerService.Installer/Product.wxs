@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?define publish="$(var.SimpleScannerService.ProjectDir)\publish"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="96656A28-A9EC-4589-8275-C7D6E7B0A247" Name="Simple Scanner Service" Language="1033" Version="1.2.1" Manufacturer="BJ" UpgradeCode="82158D80-0A39-4E50-9502-4947E9E475BA">
+  <Product Id="96656A28-A9EC-4589-8275-C7D6E7B0A247" Name="Simple Scanner Service" Language="1033" Version="2.1" Manufacturer="BJ" UpgradeCode="59F1C75D-34CB-45FA-A49D-0ABC5984DD63">
     <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />

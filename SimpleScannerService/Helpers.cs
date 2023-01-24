@@ -28,54 +28,54 @@ namespace SimpleScannerService
             return stream;
         }
 
-        public static byte[] CreateZipCollection(List<Image> images)
+        public static FileStream CreateZipCollection(List<Image> images)
         {
-            using (MemoryStream ms = new MemoryStream())
+            var fileName = DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString();
+            var tmpFile = Path.Combine(Helpers.TempFolder(), $"tmp-{fileName}.zip");
+            var fs = new FileStream(tmpFile, FileMode.CreateNew);
+            using (var archive = new ZipArchive(fs, ZipArchiveMode.Create, true))
             {
-                using (var archive = new ZipArchive(ms, ZipArchiveMode.Create, true))
+                for (var i = 0; i < images.Count; i++)
                 {
-                    for (var i = 0; i < images.Count; i++)
+                    var img = images[i];
+                    var name = $"{i + 1}.jpeg";
+                    var entry = archive.CreateEntry(name);
+                    using (var entryStream = entry.Open())
                     {
-                        var img = images[i];
-                        var name = $"{i + 1}.jpeg";
-                        var entry = archive.CreateEntry(name);
-                        using (var entryStream = entry.Open())
+                        using (var imgStream = ToStream(img))
                         {
-                            using (var imgStream = ToStream(img))
-                            {
-                                imgStream.CopyTo(entryStream);
-                            }
+                            imgStream.CopyTo(entryStream);
                         }
                     }
                 }
-                ms.Position = 0;
-                return ms.ToArray(); ;
             }
+            fs.Position = 0;
+            return fs;
         }
 
-        public static byte[] CreatePdfDocument(List<Image> images)
+        public static FileStream CreatePdfDocument(List<Image> images)
         {
-            byte[] pdfBytes;
-            using (MemoryStream ms = new MemoryStream())
+            var fileName = DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString();
+            var tmpFile = Path.Combine(Helpers.TempFolder(), $"tmp-{fileName}.pdf");
+            var fs = new FileStream(tmpFile, FileMode.CreateNew);
+            Document doc = new Document(PageSize.A4);
+            PdfWriter.GetInstance(doc, fs);
+            doc.Open();
+            images.ForEach(image =>
             {
-                Document doc = new Document(PageSize.A4);
-                PdfWriter writer = PdfWriter.GetInstance(doc, ms);
-                doc.Open();
-                images.ForEach(image =>
-                {
-                    doc.NewPage();
-                    iTextSharp.text.Image img = iTextSharp.text.Image.GetInstance(image, ImageFormat.Jpeg);
-                    img.Alignment = Element.ALIGN_CENTER;
-                    img.ScaleToFit(doc.PageSize.Width - 10, doc.PageSize.Height - 10);
-                    doc.Add(img);
-                    image.Dispose();
-                });
-                writer.Flush();
-                writer.Close();
-                doc.Close();
-                pdfBytes = ms.ToArray();
+                doc.NewPage();
+                var img = iTextSharp.text.Image.GetInstance(image, ImageFormat.Jpeg);
+                img.Alignment = Element.ALIGN_CENTER;
+                img.ScaleToFit(doc.PageSize.Width - 10, doc.PageSize.Height - 10);
+                doc.Add(img);
+            });
+            doc.Close();
+            foreach (var i in images)
+            {
+                i.Dispose();
             }
-            return pdfBytes;
+            fs.Position = 0;
+            return fs;
         }
 
 

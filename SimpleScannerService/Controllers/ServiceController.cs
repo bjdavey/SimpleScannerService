@@ -176,6 +176,8 @@ namespace SimpleScannerService.Controllers
         {
             try
             {
+                Helpers.CleanTempFolder();
+
                 AuxResponse<List<Image>> scannedImages = new AuxResponse<List<Image>>();
                 var parameters = new ScanningParameters()
                 {
@@ -284,15 +286,12 @@ namespace SimpleScannerService.Controllers
                     case null:
                     case FileTypes.PDF:
                         var pdf = Helpers.CreatePdfDocument(scannedImages.Response);
-                        Helpers.CleanTempFolder();
                         return File(pdf, "application/pdf");
                     case FileTypes.JPEG:
                         var jpeg = Helpers.ToStream(scannedImages.Response.FirstOrDefault());
-                        Helpers.CleanTempFolder();
                         return File(jpeg, "image/jpeg");
                     case FileTypes.ZIP:
                         var zip = Helpers.CreateZipCollection(scannedImages.Response);
-                        Helpers.CleanTempFolder();
                         return File(zip, "application/zip");
                     default:
                         return StatusCode(StatusCodes.Status406NotAcceptable, new
